@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sla-watch"
+version = "0.1.0"
+description = "Daily time-to-close monitoring for NYC 311 service requests"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "requests>=2.32,<3",
+  "pydantic>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.10"]
+
+[project.scripts]
+sla-watch = "sla_watch.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["integration: exercises the real data flow against a SQLite warehouse"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+ignore_missing_imports = true

@@ -1,0 +1,6 @@
+# Pinned to the versions the local dev box runs, so local pre-push tests and CI match.
+requests==2.34.2
+pydantic==2.13.5
+pytest==9.1.1
+ruff==0.16.9
+mypy==2.3.1

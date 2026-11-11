@@ -1,0 +1,64 @@
+name: live-smoke
+
+# Manual check of the real SODA API semantics (keyset predicates, timestamp formats).
+# Small window so it stays well inside free-tier limits.
+on:
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: "Rolling window in days"
+        default: "2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-state
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SLA_WINDOW_DAYS: ${{ inputs.window_days }}
+      SODA_APP_TOKEN: ${{ secrets.SODA_APP_TOKEN }}
+      SLA_DB_PATH: data/warehouse.db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - run: make setup
+      - name: Incremental extract-load (first run = bootstrap)
+        run: python -m sla_watch.cli extract-load
+      - name: Rerun must be idempotent against live data
+        run: |
+          python -m sla_watch.cli status > before.json
+          python -m sla_watch.cli extract-load
+          python -m sla_watch.cli status > after.json
+          python - <<'EOF'
+          import json
+          b, a = json.load(open("before.json")), json.load(open("after.json"))
+          print("before", b); print("after", a)
+          assert a["rows"] >= b["rows"] > 0, "expected rows and no shrinkage"
+          EOF
+      - name: Sample of real rows for fixture review
+        run: |
+          python - <<'EOF'
+          import json, sqlite3
+          c = sqlite3.connect("data/warehouse.db"); c.row_factory = sqlite3.Row
+          rows = [dict(r) for r in c.execute("SELECT * FROM raw_requests ORDER BY unique_key LIMIT 25")]
+          json.dump(rows, open("sample_rows.json", "w"), indent=1)
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: live-smoke-${{ github.run_id }}
+          path: |
+            before.json
+            after.json
+            sample_rows.json
+            data/landing/*.manifest.json
+          retention-days: 14
