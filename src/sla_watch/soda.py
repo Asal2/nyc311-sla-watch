@@ -18,6 +18,7 @@ from typing import Any
 import requests
 
 from sla_watch import log
+from sla_watch.model import SOQL_SELECT
 
 logger = log.get(__name__)
 
@@ -64,6 +65,7 @@ class SodaClient:
     dataset: str = "erm2-nwe9"
     app_token: str | None = None
     page_size: int = 50_000
+    select: str = SOQL_SELECT
     retry: RetryPolicy = field(default_factory=RetryPolicy)
     session: requests.Session = field(default_factory=requests.Session)
     sleep: Callable[[float], None] = time.sleep
@@ -131,7 +133,7 @@ class SodaClient:
                 )
             first = False
             params = {
-                "$select": ":id, :updated_at, *",
+                "$select": self.select,
                 "$where": f"({base_where}) AND {key}" if base_where else key,
                 "$order": ":updated_at, :id",
                 "$limit": str(self.page_size),

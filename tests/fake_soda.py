@@ -19,6 +19,10 @@ _UPD_GE = re.compile(r":updated_at >= '([^']+)'")
 _KEYSET = re.compile(r":updated_at > '([^']+)' OR \(:updated_at = '([^']+)' AND :id > '([^']+)'\)")
 
 
+class MalformedQuery(ValueError):
+    pass
+
+
 def _norm_created(value: str) -> str:
     return value[:19]
 
@@ -30,6 +34,10 @@ class FakeSoda:
         self.requests: list[dict[str, str]] = []
 
     def query(self, params: dict[str, str]) -> list[dict[str, Any]]:
+        fields = [f.strip() for f in params.get("$select", "").split(",") if f.strip()]
+        if "*" in fields or ":*" in fields:
+            # Mirrors real SODA: "Star selection" after named fields is a malformed query.
+            raise MalformedQuery("Star selection")
         where = params.get("$where", "")
         rows = self.rows
         if m := _CREATED_GE.search(where):
@@ -50,7 +58,10 @@ class FakeSoda:
         elif m := _UPD_GE.search(where):
             rows = [r for r in rows if r[":updated_at"] >= m.group(1)]
         rows = sorted(rows, key=lambda r: (r[":updated_at"], r[":id"]))
-        return rows[: int(params.get("$limit", "1000"))]
+        rows = rows[: int(params.get("$limit", "1000"))]
+        if fields:
+            rows = [{k: v for k, v in r.items() if k in fields} for r in rows]
+        return rows
 
 
 @contextmanager
@@ -67,7 +78,15 @@ def serve(fake: FakeSoda) -> Iterator[str]:
                 self.end_headers()
                 self.wfile.write(b'{"error": "injected"}')
                 return
-            body = json.dumps(fake.query(params)).encode()
+            try:
+                body = json.dumps(fake.query(params)).encode()
+            except MalformedQuery as exc:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps({"code": "query.compiler.malformed", "message": str(exc)}).encode()
+                )
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

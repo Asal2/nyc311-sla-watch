@@ -14,6 +14,7 @@ from fake_soda import FakeSoda, serve
 
 from sla_watch import pipeline, warehouse
 from sla_watch.config import Config
+from sla_watch.model import SOQL_SELECT
 from sla_watch.soda import RetryPolicy, SodaClient, SodaError
 
 pytestmark = pytest.mark.integration
@@ -35,6 +36,7 @@ def client(url: str, cfg: Config) -> SodaClient:
     return SodaClient(
         base_url=url,
         page_size=cfg.page_size,
+        select=SOQL_SELECT,
         sleep=lambda _s: None,
         rng=random.Random(0),
         retry=RetryPolicy(max_attempts=3),
@@ -213,3 +215,14 @@ def test_window_filter_excludes_old_requests(env: tuple[FakeSoda, str, Config]) 
         conn.execute("SELECT COUNT(*) FROM raw_requests WHERE unique_key='50000000'").fetchone()[0]
         == 0
     )
+
+
+def test_star_selection_is_rejected_like_real_soda(env: tuple[FakeSoda, str, Config]) -> None:
+    """Regression: live SODA returned HTTP 400 'Star selection' for ':id, :updated_at, *'."""
+    _, url, cfg = env
+    conn = warehouse.connect(cfg.db_path)
+    bad = client(url, cfg)
+    bad.select = ":id, :updated_at, *"
+    with pytest.raises(SodaError, match="HTTP 400"):
+        pipeline.run_incremental(conn, bad, cfg, "run1", NOW)
+    assert "*" not in SOQL_SELECT and SOQL_SELECT.startswith(":id, :updated_at, unique_key")

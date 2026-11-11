@@ -10,6 +10,7 @@ from datetime import date
 
 from sla_watch import log, pipeline, warehouse
 from sla_watch.config import Config
+from sla_watch.model import SOQL_SELECT
 from sla_watch.soda import SodaClient
 
 
@@ -19,6 +20,7 @@ def _client(cfg: Config) -> SodaClient:
         dataset=cfg.soda_dataset,
         app_token=cfg.soda_app_token,
         page_size=cfg.page_size,
+        select=SOQL_SELECT,
     )
 
 

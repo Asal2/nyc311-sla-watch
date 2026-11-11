@@ -29,6 +29,10 @@ COLUMNS: dict[str, str] = {
 }
 REQUIRED_SOURCE_COLUMNS = {"unique_key", "created_date", "agency", "complaint_type", "status"}
 
+# Explicit SoQL projection. SoQL rejects `*` after named fields ("Star selection"), and an
+# explicit list moves less data and fails fast (HTTP 400) if the source drops a column.
+SOQL_SELECT = ", ".join([":id", ":updated_at", *COLUMNS])
+
 
 def _parse_floating(value: str | None) -> str | None:
     """Validate a Socrata floating timestamp and normalise to 'YYYY-MM-DDTHH:MM:SS'."""
